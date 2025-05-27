@@ -7,7 +7,7 @@ export const Route = createFileRoute('/_pathlessLayout/_nested-layout')({
   component: LayoutComponent,
 });
 
-const PARAMS = `?day1=20250430&day2=20250521&wid=52&ccid=20019&rank=power&is_benfu=1&is_quanfu=0&page=1&perPage=1200`;
+const PARAMS = `?day1=20250430&day2=20250521&wid=52&ccid=20019&rank=power&is_benfu=1&is_quanfu=0&page=1&perPage=3000`;
 
 const URL = `https://yx.dmzgame.com/intl_warpath/rank_pid_2day`;
 
@@ -19,7 +19,9 @@ const SERVER_ID = 52;
 
 const CITY_ID = 20019;
 
-const ALLIANCE_ID = 2091799;
+const ALLIANCE_ID = 2091799; // MDAF
+// const ALLIANCE_ID = 1515218; // 300
+// const ALLIANCE_ID = 2028741; // NNN2
 
 function LayoutComponent() {
   const [fromDate, setFromDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -78,7 +80,7 @@ function LayoutComponent() {
           onClick={() => {
             const url = `${URL}?day1=${dateStr(fromDate)}&day2=${dateStr(
               toDate,
-            )}&wid=${SERVER_ID}&ccid=${CITY_ID}&rank=power&is_benfu=1&is_quanfu=0&page=1&perPage=1000`;
+            )}&wid=${SERVER_ID}&ccid=${CITY_ID}&rank=power&is_benfu=1&is_quanfu=0&page=1&perPage=1500`;
 
             setUrl(url);
           }}

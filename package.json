@@ -18,11 +18,13 @@
     "@tanstack/react-router": "^1.120.10",
     "@tanstack/react-router-devtools": "^1.120.10",
     "@tanstack/react-start": "^1.120.10",
+    "@tanstack/zod-adapter": "^1.120.11",
     "material-react-table": "^3.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
-    "vinxi": "0.5.3"
+    "vinxi": "0.5.3",
+    "zod": "^3.25.30"
   },
   "devDependencies": {
     "@types/node": "^22.5.4",
