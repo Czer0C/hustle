@@ -24,6 +24,10 @@ const ALLIANCE_ID = 2091799; // MDAF
 // const ALLIANCE_ID = 2028741; // NNN2
 
 function LayoutComponent() {
+  const [allianceId, setAllianceId] = useState<number>(ALLIANCE_ID);
+
+  const [serverId, setServerId] = useState<number>(SERVER_ID);
+
   const [fromDate, setFromDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   const [toDate, setToDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -53,27 +57,54 @@ function LayoutComponent() {
   return (
     <div>
       <div className="grid grid-cols-3 p-4 gap-4">
-        <input
-          className="w-full rounded-md border-2 border-gray-300 p-2"
-          type="date"
-          value={fromDate}
-          onChange={(e) => {
-            setFromDate(e.target.value);
+        <div>
+          <b>Alliance ID</b>
+          <input
+            className="w-full rounded-md border-2 border-gray-300 p-2"
+            type="number"
+            value={allianceId}
+            onChange={(e) => setAllianceId(+e.target.value)}
+          />
+        </div>
 
-            const nextMax = new Date(e.target.value);
-            nextMax.setDate(nextMax.getDate() + 28);
+        <div>
+          <b>Server ID</b>
+          <input
+            className="w-full rounded-md border-2 border-gray-300 p-2"
+            type="number"
+            value={serverId}
+            onChange={(e) => setServerId(+e.target.value)}
+          />
+        </div>
 
-            setToDate(nextMax.toISOString().split('T')[0]);
-          }}
-        />
-        <input
-          className="w-full rounded-md border-2 border-gray-300 p-2"
-          type="date"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          {...(fromDate ? { min: fromDate } : {})}
-          {...(maxDate ? { max: maxDate.toISOString().split('T')[0] } : {})}
-        />
+        <div>
+          <b>From Date</b>
+          <input
+            className="w-full rounded-md border-2 border-gray-300 p-2"
+            type="date"
+            value={fromDate}
+            onChange={(e) => {
+              setFromDate(e.target.value);
+
+              const nextMax = new Date(e.target.value);
+              nextMax.setDate(nextMax.getDate() + 28);
+
+              setToDate(nextMax.toISOString().split('T')[0]);
+            }}
+          />
+        </div>
+
+        <div>
+          <b>To Date</b>
+          <input
+            className="w-full rounded-md border-2 border-gray-300 p-2"
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            {...(fromDate ? { min: fromDate } : {})}
+            {...(maxDate ? { max: maxDate.toISOString().split('T')[0] } : {})}
+          />
+        </div>
 
         <button
           className="bg-blue-500 text-white p-2 rounded-md"
