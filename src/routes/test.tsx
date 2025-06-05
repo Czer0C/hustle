@@ -1,122 +1,31 @@
+import { Alert, Autocomplete, Button, TextField } from '@mui/material';
+import { ArrowDropDownIcon } from '@mui/x-date-pickers';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { MaterialReactTable, MRT_ColumnDef, useMaterialReactTable } from 'material-react-table';
-import { useState } from 'react';
-import { ALL_ALLIANCE_MEMBERS, ALLIANCE_IDS } from '~/utils/enum';
+import { useEffect, useState } from 'react';
+import * as XLSX from 'xlsx';
+import { Alliance, AllianceOption, FilterProps, QueryResponse, SingleData } from '~/types';
+import { ALLIANCE_IDS, ALLIANCE_IDS_DICT } from '~/utils/enum';
+import { formatNumber, sleep } from '~/utils/helpers';
 
 const DETAIL = `https://yx.dmzgame.com/intl_warpath/pid_detail?page=1`;
 
 const SLEEP_TIME = 2000;
+
+const DEFAULT_MAIN_ALLIANCE = 2110790; //! MDAF
+
 export const Route = createFileRoute('/test')({
   component: RouteComponent,
 });
 
-const sample = {
-  Code: 0,
-  Message: 'ok',
-  Data: [
-    {
-      id: 165321910,
-      day: 20250603,
-      pid: 8938595,
-      wid: 19,
-      cid: 30016,
-      ccid: 30016,
-      gid: 652220,
-      gnick: 'PFK',
-      lv: 32,
-      nick: 'Blackdragon^^',
-      power: 645224158,
-      maxpower: 580746191,
-      sumkill: 9778639,
-      score: 6324721185,
-      die: 2565247,
-      caiji: 56832332815,
-      gx: 59049,
-      bz: 91713,
-      c_power: 621601,
-      c_die: 0,
-      c_score: 0,
-      c_sumkill: 0,
-      c_caiji: 45000000,
-      powers: {
-        camp: 2223900,
-        tech: 150848917,
-        equip: 7731432,
-        total: 645224158,
-        officer: 21812300,
-        army_air: 64181282,
-        army_navy: 20612898,
-        army_ground: 269371879,
-        tactic_card: 1595000,
-        mine_vehicle: 16000,
-        user_city_building: 106830550,
-      },
-      kills: [
-        9504, 10449, 3413, 21307, 79934, 195049, 301906, 456339, 675951, 890891, 483128, 1207902, 967438, 673015,
-        3802413,
-      ],
-      created_at: '2025-06-04 12:37:47',
-    },
-  ],
-};
+function useDetails(filter: FilterProps) {
+  const ids = filter.alliances.reduce((acc, gid) => [...acc, ...ALLIANCE_IDS_DICT[gid]], []);
 
-interface SingleData {
-  id: number;
-  day: number;
-  pid: number;
-  wid: number;
-  cid: number;
-  ccid: number;
-  gid: number;
-  gnick: string;
-  lv: number;
-  nick: string;
-  power: number;
-  maxpower: number;
-  sumkill: number;
-  score: number;
-  die: number;
-  caiji: number;
-  gx: number;
-  bz: number;
-  c_power: number;
-  c_die: number;
-  c_score: number;
-  c_sumkill: number;
-  c_caiji: number;
-  powers: {
-    camp: number;
-    tech: number;
-    equip: number;
-    total: number;
-    officer: number;
-    army_air: number;
-    army_navy: number;
-    army_ground: number;
-    tactic_card: number;
-    mine_vehicle: number;
-    user_city_building: number;
-  };
-  kills: number[];
-  created_at: string;
-  sumKillOld: number;
-  diffKill: number;
-  sumKillOldDay: string;
-}
-interface QueryResponse {
-  data: SingleData[];
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function useDetails(dateGap: number) {
   const { data, isLoading } = useQuery<QueryResponse>({
-    queryKey: ['players', dateGap],
+    queryKey: ['players', filter],
     queryFn: async () => {
-      const urls = ALL_ALLIANCE_MEMBERS.map((id) => `${DETAIL}&perPage=${dateGap}&pid=${id}`);
+      const urls = ids.map((id) => `${DETAIL}&perPage=${filter.dateGap}&pid=${id}`);
 
       const all: SingleData[] = [];
 
@@ -169,29 +78,154 @@ function useDetails(dateGap: number) {
 }
 
 function RouteComponent() {
-  const [dateGapValue, setDateGapValue] = useState(1);
+  const [filter, setFilter] = useState<FilterProps>({
+    alliances: [],
+    dateGap: 1,
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Filter filter={filter} setFilter={setFilter} />
+    </div>
+  );
+}
+
+function Filter({ filter, setFilter }: { filter: FilterProps; setFilter: (filter: FilterProps) => void }) {
+  const [init, setInit] = useState(false);
+
+  const [selected, setSelected] = useState<AllianceOption[]>([]);
 
   const [dateGap, setDateGap] = useState(1);
 
-  const { data, isLoading } = useDetails(dateGapValue);
+  const API_ALLIANCE = `https://yx.dmzgame.com/intl_warpath/rank_guild?day=20250604&wid=0.1&ccid=0&rank=power&is_benfu=1&is_quanfu=1&page=1&perPage=10`;
+
+  const { data = [], isLoading } = useQuery<AllianceOption[]>({
+    queryKey: ['alliance'],
+    queryFn: async () => {
+      const res = await fetch(API_ALLIANCE);
+
+      const data = await res.json();
+
+      const alliances = Array.isArray(data.Data)
+        ? data.Data.map((k: Alliance) => ({
+            label: k.fname,
+            value: k.gid,
+            rest: k,
+          }))
+        : [];
+
+      return alliances;
+    },
+  });
+
+  useEffect(() => {
+    if (!init && data?.length > 0) {
+      const defaultMdaf = data.find((i) => i.value === DEFAULT_MAIN_ALLIANCE);
+
+      if (defaultMdaf) setSelected([defaultMdaf]);
+    }
+  }, [init, data]);
+  const canFetch = filter?.alliances?.length > 0 && filter?.dateGap > 0;
+  return (
+    <div className="bg-white flex flex-col gap-4 p-4">
+      <Autocomplete
+        loading={isLoading}
+        value={selected}
+        multiple
+        onChange={(_, value) => setSelected(value)}
+        options={data}
+        loadingText="Getting Alliances Information"
+        filterSelectedOptions
+        disableCloseOnSelect
+        isOptionEqualToValue={(option, value) => option.value === value.value}
+        renderOption={(params, option: any) => {
+          const { value, rest } = option;
+
+          const { power, kil, c_power, c_kil } = rest;
+
+          return (
+            <li {...params}>
+              <span>
+                <b className="text-sky-500">{option.label}</b>
+
+                <p className="flex gap-2">
+                  <b>Power</b>
+                  <span>{formatNumber(power)}</span>
+
+                  <b>Kil</b>
+                  <span>{formatNumber(kil)}</span>
+                </p>
+              </span>
+            </li>
+          );
+        }}
+        renderInput={(params) => <TextField {...params} label="Alliance" />}
+      />
+
+      <TextField value={dateGap} onChange={(e) => setDateGap(Number(e.target.value))} type="number" label="Date Gap" />
+
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={() =>
+          setFilter({
+            alliances: selected.map((i) => i.value),
+            dateGap,
+          })
+        }
+      >
+        Submit
+      </Button>
+      {canFetch ? (
+        <MainData filter={filter} />
+      ) : (
+        <Alert severity="warning">Select Alliances and Date Gap To Start</Alert>
+      )}
+      {/* <pre>{JSON.stringify(filter, null, 2)}</pre> */}
+    </div>
+  );
+}
+
+function MainData({ filter }: { filter: FilterProps }) {
+  const { data, isLoading } = useDetails(filter);
+
+  const handleExport = () => {
+    if (!data?.data?.length) return;
+
+    const flatData = data.data.map((i) => {
+      const { day, pid, wid, gnick, nick, maxpower, sumkill, score, die, sumKillOld, diffKill, sumKillOldDay, powers } =
+        i;
+      return {
+        day,
+        pid,
+        wid,
+        gnick,
+        nick,
+        maxpower,
+        sumkill,
+        score,
+        die,
+        sumKillOld,
+        diffKill,
+        sumKillOldDay,
+        ...powers,
+      };
+    });
+
+    // Convert data to worksheet
+    const ws = XLSX.utils.json_to_sheet(flatData);
+    // Create a new workbook and append the worksheet
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'RawData');
+    // Generate buffer
+    XLSX.writeFile(wb, 'raw_data.xlsx');
+  };
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex">
-        <input
-          className="p-4 m-4 border-2 border-zinc-200 rounded-md bg-slate-50"
-          type="number"
-          value={dateGap}
-          onChange={(e) => setDateGap(Number(e.target.value))}
-        />
-
-        <button
-          onClick={() => setDateGapValue(dateGap)}
-          className="p-4 m-4 border-2 border-zinc-200 rounded-md bg-slate-50"
-        >
-          Get Data
-        </button>
-      </div>
+      <Button onClick={handleExport} color="success">
+        <ArrowDropDownIcon /> Export Raw Excel
+      </Button>
 
       <TablePlayer data={data?.data || []} isLoading={isLoading} />
     </div>
@@ -204,29 +238,47 @@ function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boole
       header: 'Time Get',
       accessorKey: 'created_at',
     },
-    {
-      header: 'Server',
-      accessorKey: 'wid',
-    },
+    // {
+    //   header: 'Server',
+    //   accessorKey: 'wid',
+    // },
     {
       header: 'Alliance',
       accessorKey: 'gnick',
-    },
-    {
-      header: 'ID',
-      accessorKey: 'id',
-    },
-    {
-      header: 'Name',
-      accessorKey: 'nick',
-    },
-    {
-      header: 'Power',
-      accessorKey: 'power',
-      Cell: ({ cell }) => {
-        return <span className="text-zinc-500">{formatNumber(cell.getValue() as number)}</span>;
+      Cell: ({ row }) => {
+        const { gnick, wid } = row.original;
+
+        return (
+          <span className="text-zinc-500">
+            <b>[{wid}]</b> {gnick}
+          </span>
+        );
       },
     },
+    // {
+    //   header: 'ID',
+    //   accessorKey: 'id',
+    // },
+    {
+      header: 'Player',
+      accessorKey: 'nick',
+      Cell: ({ row }) => {
+        const { nick, pid } = row.original;
+
+        return (
+          <span className="text-zinc-500">
+            <b>[{pid}]</b> {nick}
+          </span>
+        );
+      },
+    },
+    // {
+    //   header: 'Power',
+    //   accessorKey: 'power',
+    //   Cell: ({ cell }) => {
+    //     return <span className="text-zinc-500">{formatNumber(cell.getValue() as number)}</span>;
+    //   },
+    // },
     {
       header: 'All Time Power',
       accessorKey: 'maxpower',
@@ -286,6 +338,12 @@ function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boole
       Cell: ({ cell }) => {
         return <b className="text-slate-500">{formatNumber(cell.getValue() as number)}</b>;
       },
+      AggregatedCell: ({ cell, table }) => (
+        <>
+          Sum By {table.getColumn(cell.row.groupingColumnId ?? '').columnDef.header}:{' '}
+          <b className="text-indigo-500">{formatNumber(cell.getValue<number>())}</b>
+        </>
+      ),
     },
     {
       header: 'Sum Kill Old',
@@ -302,6 +360,12 @@ function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boole
           </b>
         );
       },
+      AggregatedCell: ({ cell, table }) => (
+        <>
+          Sum By {table.getColumn(cell.row.groupingColumnId ?? '').columnDef.header}:{' '}
+          <b className="text-indigo-500">{formatNumber(cell.getValue<number>())}</b>
+        </>
+      ),
     },
     {
       header: 'Diff Kills',
@@ -309,6 +373,12 @@ function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boole
       Cell: ({ cell }) => {
         return <span className="text-rose-500">{formatNumber(cell.getValue() as number)}</span>;
       },
+      AggregatedCell: ({ cell, table }) => (
+        <>
+          Sum By {table.getColumn(cell.row.groupingColumnId ?? '').columnDef.header}:{' '}
+          <b className="text-indigo-500">{formatNumber(cell.getValue<number>())}</b>
+        </>
+      ),
     },
     {
       header: 'Score',
@@ -342,10 +412,4 @@ function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boole
   });
 
   return <MaterialReactTable table={table} />;
-}
-
-function formatNumber(number: number) {
-  if (typeof number !== 'number') return 'N/A';
-
-  return number.toLocaleString();
 }
