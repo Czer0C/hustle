@@ -1,16 +1,10 @@
-import { createFileRoute, Link, stripSearchParams } from '@tanstack/react-router';
-import { z } from 'zod';
-import { zodValidator } from '@tanstack/zod-adapter';
-import { useEffect, useState } from 'react';
-import { MaterialReactTable, MRT_ColumnDef, useMaterialReactTable } from 'material-react-table';
-import mock from 'src/routes/api/mock.json';
-import { catchError, debounceTime, fromEvent, interval, map, of, Subscription, tap } from 'rxjs';
-import { ajax } from 'rxjs/ajax';
-import { webSocket } from 'rxjs/webSocket';
 import { useQuery } from '@tanstack/react-query';
-import { ALL_ALLIANCE_MEMBERS, ALLIANCE_IDS, TOP_1_500, TOP_501_1000 } from '~/utils/enum';
+import { createFileRoute } from '@tanstack/react-router';
+import { MaterialReactTable, MRT_ColumnDef, useMaterialReactTable } from 'material-react-table';
+import { useState } from 'react';
+import { ALL_ALLIANCE_MEMBERS, ALLIANCE_IDS } from '~/utils/enum';
 
-const DETAIL = `https://yx.dmzgame.com/intl_warpath/pid_detail?page=1&perPage=1&pid=`;
+const DETAIL = `https://yx.dmzgame.com/intl_warpath/pid_detail?page=1`;
 
 const SLEEP_TIME = 2000;
 export const Route = createFileRoute('/test')({
@@ -106,6 +100,9 @@ interface SingleData {
   };
   kills: number[];
   created_at: string;
+  sumKillOld: number;
+  diffKill: number;
+  sumKillOldDay: string;
 }
 interface QueryResponse {
   data: SingleData[];
@@ -115,27 +112,41 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function useDetails() {
-  const test = [...TOP_1_500, ...TOP_501_1000];
-
+function useDetails(dateGap: number) {
   const { data, isLoading } = useQuery<QueryResponse>({
-    queryKey: ['players'],
+    queryKey: ['players', dateGap],
     queryFn: async () => {
-      const urls = ALL_ALLIANCE_MEMBERS.map((id) => `${DETAIL}${id}`);
+      const urls = ALL_ALLIANCE_MEMBERS.slice(0, 5).map((id) => `${DETAIL}&perPage=${dateGap}&pid=${id}`);
+
       const all: SingleData[] = [];
+
       for (let i = 0; i < urls.length; i += 50) {
         const batch = urls.slice(i, i + 50);
+
         const results = await Promise.all(
           batch.map((url) =>
             fetch(url, {
               method: 'GET',
             }).then(async (res) => {
               const data = await res.json();
-              return data.Data[0];
+
+              const latest = data.Data?.[0] || null;
+
+              const oldest = data.Data?.[data?.Data?.length - 1] || null;
+
+              const sumKillOld = oldest?.sumkill || 0;
+
+              const diffKill = latest?.sumkill - sumKillOld;
+
+              const sumKillOldDay = oldest?.created_at || '';
+
+              return { ...latest, sumKillOld, diffKill, sumKillOldDay };
             }),
           ),
         );
+
         all.push(...results);
+
         if (i + 50 < urls.length) {
           await sleep(SLEEP_TIME); // 5 seconds delay after every 50 requests
         }
@@ -154,23 +165,45 @@ function useDetails() {
     refetchOnReconnect: false,
   });
 
-  return { data };
+  return { data, isLoading };
 }
 
 function RouteComponent() {
-  const { data } = useDetails();
+  const [dateGapValue, setDateGapValue] = useState(1);
 
-  if (!data) return <div>Loading...</div>;
+  const [dateGap, setDateGap] = useState(1);
+
+  const { data, isLoading } = useDetails(dateGapValue);
 
   return (
     <div className="flex flex-col gap-2">
-      <TablePlayer data={data?.data || []} />
+      <div className="flex">
+        <input
+          className="p-4 m-4 border-2 border-zinc-200 rounded-md bg-slate-50"
+          type="number"
+          value={dateGap}
+          onChange={(e) => setDateGap(Number(e.target.value))}
+        />
+
+        <button
+          onClick={() => setDateGapValue(dateGap)}
+          className="p-4 m-4 border-2 border-zinc-200 rounded-md bg-slate-50"
+        >
+          Get Data
+        </button>
+      </div>
+
+      <TablePlayer data={data?.data || []} isLoading={isLoading} />
     </div>
   );
 }
 
-function TablePlayer({ data }: { data: SingleData[] }) {
+function TablePlayer({ data, isLoading }: { data: SingleData[]; isLoading: boolean }) {
   const columns: MRT_ColumnDef<SingleData>[] = [
+    {
+      header: 'Time Get',
+      accessorKey: 'created_at',
+    },
     {
       header: 'Server',
       accessorKey: 'wid',
@@ -198,7 +231,7 @@ function TablePlayer({ data }: { data: SingleData[] }) {
       header: 'All Time Power',
       accessorKey: 'maxpower',
       Cell: ({ cell }) => {
-        return <span className="text-amber-500">{formatNumber(cell.getValue() as number)}</span>;
+        return <span className="text-slate-500">{formatNumber(cell.getValue() as number)}</span>;
       },
       AggregatedCell: ({ cell, table }) => (
         <>
@@ -251,7 +284,30 @@ function TablePlayer({ data }: { data: SingleData[] }) {
       header: 'Sum Kill',
       accessorKey: 'sumkill',
       Cell: ({ cell }) => {
-        return <span className="text-slate-500">{formatNumber(cell.getValue() as number)}</span>;
+        return <b className="text-slate-500">{formatNumber(cell.getValue() as number)}</b>;
+      },
+    },
+    {
+      header: 'Sum Kill Old',
+      accessorKey: 'sumKillOld',
+      Cell: ({ row }) => {
+        const val = row.original.sumKillOld;
+
+        const day = row.original.sumKillOldDay;
+
+        return (
+          <b className="text-stone-500">
+            {formatNumber(val)} <br />
+            <small className="text-amber-400 italic">{day}</small>
+          </b>
+        );
+      },
+    },
+    {
+      header: 'Diff Kills',
+      accessorKey: 'diffKill',
+      Cell: ({ cell }) => {
+        return <span className="text-rose-500">{formatNumber(cell.getValue() as number)}</span>;
       },
     },
     {
@@ -276,9 +332,11 @@ function TablePlayer({ data }: { data: SingleData[] }) {
     enableGrouping: true,
     // groupedColumnMode:"",
     initialState: {
-      expanded: false, //expand all groups by default
       grouping: ['gnick'], //an array of columns to group by by default (can be multiple)
       pagination: { pageIndex: 0, pageSize: 20 },
+    },
+    state: {
+      isLoading,
     },
     muiTableContainerProps: { sx: { maxHeight: '100vh' } },
   });
