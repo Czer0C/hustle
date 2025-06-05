@@ -116,7 +116,7 @@ function useDetails(dateGap: number) {
   const { data, isLoading } = useQuery<QueryResponse>({
     queryKey: ['players', dateGap],
     queryFn: async () => {
-      const urls = ALL_ALLIANCE_MEMBERS.slice(0, 5).map((id) => `${DETAIL}&perPage=${dateGap}&pid=${id}`);
+      const urls = ALL_ALLIANCE_MEMBERS.map((id) => `${DETAIL}&perPage=${dateGap}&pid=${id}`);
 
       const all: SingleData[] = [];
 
