@@ -19,15 +19,18 @@ export const Route = createFileRoute('/test')({
   component: RouteComponent,
 });
 
-function useDetails(filter: FilterProps) {
-  const ids = filter.alliances.reduce((acc, gid) => [...acc, ...ALLIANCE_IDS_DICT[gid]], []);
+function useDetails(filter: FilterProps, onProgress?: (progress: number) => void) {
+  const ids = filter.alliances.reduce<number[]>((acc, gid) => {
+    const arr = ALLIANCE_IDS_DICT[gid as keyof typeof ALLIANCE_IDS_DICT] || [];
+    return [...acc, ...arr];
+  }, []);
 
   const { data, isLoading } = useQuery<QueryResponse>({
     queryKey: ['players', filter],
     queryFn: async () => {
       const urls = ids.map((id) => `${DETAIL}&perPage=${filter.dateGap}&pid=${id}`);
-
       const all: SingleData[] = [];
+      const totalBatches = Math.ceil(urls.length / 50);
 
       for (let i = 0; i < urls.length; i += 50) {
         const batch = urls.slice(i, i + 50);
@@ -38,23 +41,21 @@ function useDetails(filter: FilterProps) {
               method: 'GET',
             }).then(async (res) => {
               const data = await res.json();
-
               const latest = data.Data?.[0] || null;
-
               const oldest = data.Data?.[data?.Data?.length - 1] || null;
-
               const sumKillOld = oldest?.sumkill || 0;
-
               const diffKill = latest?.sumkill - sumKillOld;
-
               const sumKillOldDay = oldest?.created_at || '';
-
               return { ...latest, sumKillOld, diffKill, sumKillOldDay };
             }),
           ),
         );
 
         all.push(...results);
+
+        if (onProgress) {
+          onProgress(Math.min(100, Math.round(((i + batch.length) / urls.length) * 100)));
+        }
 
         if (i + 50 < urls.length) {
           await sleep(SLEEP_TIME); // 5 seconds delay after every 50 requests
@@ -141,12 +142,14 @@ function Filter({ filter, setFilter }: { filter: FilterProps; setFilter: (filter
         renderOption={(params, option: any) => {
           const { value, rest } = option;
 
-          const { power, kil, c_power, c_kil } = rest;
+          const { power, kil, c_power, c_kil, wid } = rest;
 
           return (
             <li {...params}>
               <span>
-                <b className="text-sky-500">{option.label}</b>
+                <b className="text-sky-500">
+                  <span className="text-red-500">[{wid}]</span> {option.label}
+                </b>
 
                 <p className="flex gap-2">
                   <b>Power</b>
@@ -187,11 +190,11 @@ function Filter({ filter, setFilter }: { filter: FilterProps; setFilter: (filter
 }
 
 function MainData({ filter }: { filter: FilterProps }) {
-  const { data, isLoading } = useDetails(filter);
+  const [progress, setProgress] = useState(0);
+  const { data, isLoading } = useDetails(filter, setProgress);
 
   const handleExport = () => {
     if (!data?.data?.length) return;
-
     const flatData = data.data.map((i) => {
       const { day, pid, wid, gnick, nick, maxpower, sumkill, score, die, sumKillOld, diffKill, sumKillOldDay, powers } =
         i;
@@ -211,7 +214,6 @@ function MainData({ filter }: { filter: FilterProps }) {
         ...powers,
       };
     });
-
     // Convert data to worksheet
     const ws = XLSX.utils.json_to_sheet(flatData);
     // Create a new workbook and append the worksheet
@@ -223,10 +225,20 @@ function MainData({ filter }: { filter: FilterProps }) {
 
   return (
     <div className="flex flex-col gap-2">
+      {isLoading && (
+        <div className="mb-2">
+          <b className="text-zinc-500">Progress: {progress}%</b>
+          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div
+              className="bg-emerald-600 h-2.5 rounded-full"
+              style={{ width: `${progress}%`, transition: 'width 0.3s' }}
+            ></div>
+          </div>
+        </div>
+      )}
       <Button onClick={handleExport} color="success">
         <ArrowDropDownIcon /> Export Raw Excel
       </Button>
-
       <TablePlayer data={data?.data || []} isLoading={isLoading} />
     </div>
   );
